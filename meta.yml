@@ -1,0 +1,26 @@
+---
+fullname: Formalization of EasyUC in Coq
+shortname: EasyUCFormalization
+opam_name: coq-easyuc-formalization
+organization: uguryavuz
+community: false
+action: false
+dune: false
+coqdoc: false
+
+synopsis: Coq formalization of EasyUC.
+
+description: |-
+  Placeholder.
+
+authors:
+- name: Ugur Y. Yavuz
+  initial: true
+
+namespace: EasyUCFormalization
+
+documentation: |-
+  ## Documentation
+  Placeholder.
+
+---
