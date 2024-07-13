@@ -4,3 +4,4 @@ theories/Utils.v
 theories/StrVList.v
 theories/NonProbTerms.v
 theories/ProbTerms.v
+theories/Msgs.v
