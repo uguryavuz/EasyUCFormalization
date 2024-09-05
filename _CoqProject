@@ -5,3 +5,4 @@ theories/StrVList.v
 theories/NonProbTerms.v
 theories/ProbTerms.v
 theories/Msgs.v
+theories/Interfaces.v
