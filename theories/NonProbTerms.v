@@ -1,6 +1,6 @@
 (* NonProbTerms.v *)
 (* Non-probabilistic terms *)
-From Coq Require Import ZArith.
+Require Import String ZArith.
 From EasyUCFormalization Require Import Utils.
 
 (* Ground types *)
@@ -33,10 +33,11 @@ Inductive val : Type :=
 (*                to its result                                          *)
 (*  - varty_env : maps variable names to their types *)
 (*  - var_env   : maps variable names to their values *)
-Parameter opty_env : StrMap.t opty.
-Parameter op_env : StrMap.t (list val -> val -> Prop). (* Note that this can be non-deterministic *)
-Parameter varty_env : StrMap.t ty.
-Parameter var_env : StrMap.t val.
+Record env : Type :=
+  { opty_env : StrMap.t opty;
+    op_env : StrMap.t (list val -> val -> Prop); (* Note that this can be non-deterministic *)
+    varty_env : StrMap.t ty;
+    var_env : StrMap.t val }.
 
 (* Typing on values *)
 Inductive val_has_type : val -> ty -> Prop := 
@@ -85,160 +86,164 @@ Inductive tm : Type :=
   | Tm_None : ty -> tm
   | Tm_Some : tm -> tm
   (* Operator application - an operator name and a list of terms *)
-  | Tm_Op : StrMap.key -> list tm -> tm
+  | Tm_Op : string -> list tm -> tm
   (* Variable *)
-  | Tm_Var : StrMap.key -> tm.
+  | Tm_Var : string -> tm.
 
 (* Typing relation *)                                                   
 (* Takes a term and a type and returns a Prop.                 *)
 (* This is the extrinsic approach.                             *)
 (* For typing of operators, it performs a look-up in opty_env. *)    
-Inductive tm_has_type : tm -> ty -> Prop :=
+Inductive tm_has_type (env : env) : tm -> ty -> Prop :=
   (* Integers *)
-  | TmHasTy_Int : forall (i : Z), tm_has_type (Tm_Int i) Ty_Int
+  | TmHasTy_Int : forall (i : Z), tm_has_type env (Tm_Int i) Ty_Int
   (* Booleans *)
-  | TmHasTy_True : tm_has_type Tm_True Ty_Bool
-  | TmHasTy_False : tm_has_type Tm_False Ty_Bool
+  | TmHasTy_True : tm_has_type env Tm_True Ty_Bool
+  | TmHasTy_False : tm_has_type env Tm_False Ty_Bool
   (* Products *)
-  | TmHasTy_Prod_Empty : tm_has_type (Tm_Prod nil) (Ty_Prod nil)
+  | TmHasTy_Prod_Empty : tm_has_type env (Tm_Prod nil) (Ty_Prod nil)
   | TmHasTy_Prod_NonEmpty : forall (htm : tm) (ttm : list tm) (hty : ty) (tty : list ty),
-    tm_has_type htm hty ->
-    tm_has_type (Tm_Prod ttm) (Ty_Prod tty) ->
-    tm_has_type (Tm_Prod (htm :: ttm)) (Ty_Prod (hty :: tty))
+    tm_has_type env htm hty ->
+    tm_has_type env (Tm_Prod ttm) (Ty_Prod tty) ->
+    tm_has_type env (Tm_Prod (htm :: ttm)) (Ty_Prod (hty :: tty))
   (* Lists *)
-  | TmHasTy_Nil : forall (ty : ty), tm_has_type (Tm_Nil ty) (Ty_List ty)
+  | TmHasTy_Nil : forall (ty : ty), tm_has_type env (Tm_Nil ty) (Ty_List ty)
   | TmHasTy_Cons : forall (htm : tm) (ttm : tm) (ty : ty),
-    tm_has_type htm ty ->
-    tm_has_type ttm (Ty_List ty) ->
-    tm_has_type (Tm_Cons htm ttm) (Ty_List ty)
+    tm_has_type env htm ty ->
+    tm_has_type env ttm (Ty_List ty) ->
+    tm_has_type env (Tm_Cons htm ttm) (Ty_List ty)
   (* Options *)
-  | TmHasTy_None : forall (ty : ty), tm_has_type (Tm_None ty) (Ty_Option ty)
+  | TmHasTy_None : forall (ty : ty), tm_has_type env (Tm_None ty) (Ty_Option ty)
   | TmHasTy_Some : forall (stm : tm) (ty : ty),
-    tm_has_type stm ty ->
-    tm_has_type (Tm_Some stm) (Ty_Option ty)
+    tm_has_type env stm ty ->
+    tm_has_type env (Tm_Some stm) (Ty_Option ty)
   (* Operator *)
-  | TmHasTy_Op : forall (op : StrMap.key) (ltm : list tm) (lty : list ty) (ty : ty),
-    StrMap.MapsTo op (Ty_Op lty ty) opty_env ->
-    tm_has_type (Tm_Prod ltm) (Ty_Prod lty) ->
-    tm_has_type (Tm_Op op ltm) ty
+  | TmHasTy_Op : forall (op : string) (ltm : list tm) (lty : list ty) (ty : ty),
+    StrMap.MapsTo op (Ty_Op lty ty) env.(opty_env) ->
+    tm_has_type env (Tm_Prod ltm) (Ty_Prod lty) ->
+    tm_has_type env (Tm_Op op ltm) ty
   (* Variables *)
-  | TmHasTy_Var : forall (x : StrMap.key) (ty : ty),
-    StrMap.MapsTo x ty varty_env ->
-    tm_has_type (Tm_Var x) ty.
+  | TmHasTy_Var : forall (x : string) (ty : ty),
+    StrMap.MapsTo x ty env.(varty_env) ->
+    tm_has_type env (Tm_Var x) ty.
 
 (* Theorem: any typed term has a unique type *)
-Theorem tm_has_unique_type : forall (t : tm) (ty1 ty2 : ty),
-  tm_has_type t ty1 -> tm_has_type t ty2 -> ty1 = ty2.
+Theorem tm_has_unique_type : forall (env : env) (t : tm) (ty1 ty2 : ty),
+  tm_has_type env t ty1 -> tm_has_type env t ty2 -> ty1 = ty2.
 Proof.
-    intros t ty1 ty2 H1.
-    generalize dependent ty2.
-    induction H1; intros ty2 H2; inversion H2; try trivial; auto.
-    - subst.
-      apply IHtm_has_type1 in H1.
-      apply IHtm_has_type2 in H4.
-      inversion H4.
-      apply f_equal.
-      rewrite H1.
-      trivial.
-    - subst.
-      apply f_equal.
-      apply IHtm_has_type.
-      assumption.
-    - subst.
-      apply StrMap.find_1 in H, H4.
-      rewrite H in H4.
-      inversion H4.
-      trivial.
-    - subst. 
-      apply StrMapFacts.MapsTo_fun 
-        with (x:=x) (e:=ty2) (m:=varty_env) in H; auto.
+  intros env t ty1 ty2 H1.
+  generalize dependent ty2.
+  induction H1; intros ty2 H2; inversion H2; try trivial; auto.
+  - subst.
+    apply IHtm_has_type1 in H1.
+    apply IHtm_has_type2 in H4.
+    inversion H4.
+    apply f_equal.
+    rewrite H1.
+    trivial.
+  - subst.
+    apply f_equal.
+    apply IHtm_has_type.
+    assumption.
+  - subst.
+    apply StrMap.find_1 in H, H4.
+    rewrite H in H4.
+    inversion H4.
+    trivial.
+  - subst. 
+    apply StrMapFacts.MapsTo_fun 
+      with (x:=x) (e:=ty2) (m:=env.(varty_env)) in H; auto.
 Qed.
 
 (* Evaluation relation - big step semantics *)
-Inductive eval : tm -> val -> Prop :=
+Inductive eval (env : env) : tm -> val -> Prop :=
   (* Integers *)
   | Eval_Int : forall (i : Z), 
-    eval (Tm_Int i) (Val_Int i)
+    eval env (Tm_Int i) (Val_Int i)
   (* Booleans *)
-  | Eval_True : eval Tm_True Val_True
-  | Eval_False : eval Tm_False Val_False
+  | Eval_True : eval env Tm_True Val_True
+  | Eval_False : eval env Tm_False Val_False
   (* Products *)
-  | Eval_Prod_Empty : eval (Tm_Prod nil) (Val_Prod nil)
+  | Eval_Prod_Empty : eval env (Tm_Prod nil) (Val_Prod nil)
   | Eval_Prod_NonEmpty : forall (ht : tm) (tt : list tm) (hv : val) (tv : list val),
-    eval ht hv ->
-    eval (Tm_Prod tt) (Val_Prod tv) ->
-    eval (Tm_Prod (ht :: tt)) (Val_Prod (hv :: tv))
+    eval env ht hv ->
+    eval env (Tm_Prod tt) (Val_Prod tv) ->
+    eval env (Tm_Prod (ht :: tt)) (Val_Prod (hv :: tv))
   (* Lists *)
   | Eval_Nil : forall (ty : ty), 
-    eval (Tm_Nil ty) (Val_Nil ty)
+    eval env (Tm_Nil ty) (Val_Nil ty)
   | Eval_Cons : forall (ht tt : tm) (hv tv : val),
-    eval ht hv ->
-    eval tt tv ->
-    eval (Tm_Cons ht tt) (Val_Cons hv tv)
+    eval env ht hv ->
+    eval env tt tv ->
+    eval env (Tm_Cons ht tt) (Val_Cons hv tv)
   (* Options *)
   | Eval_None : forall (ty : ty),
-    eval (Tm_None ty) (Val_None ty)
+    eval env (Tm_None ty) (Val_None ty)
   | Eval_Some : forall (t : tm) (v : val),
-    eval t v ->
-    eval (Tm_Some t) (Val_Some v)
+    eval env t v ->
+    eval env (Tm_Some t) (Val_Some v)
   (* Operator *)
-  | Eval_Op : forall (op : StrMap.key) (ltm : list tm) (lval : list val) 
+  | Eval_Op : forall (op : string) (ltm : list tm) (lval : list val) 
                      (rval : val) (f : list val -> val -> Prop),
-    StrMap.MapsTo op f op_env ->
+    StrMap.MapsTo op f env.(op_env) ->
     f lval rval ->
-    eval (Tm_Prod ltm) (Val_Prod lval) ->
-    eval (Tm_Op op ltm) rval
+    eval env (Tm_Prod ltm) (Val_Prod lval) ->
+    eval env (Tm_Op op ltm) rval
   | (* Variable *)
-    Eval_Var : forall (x : StrMap.key) (v : val),
-    StrMap.MapsTo x v var_env ->
-    eval (Tm_Var x) v.
+    Eval_Var : forall (x : string) (v : val),
+    StrMap.MapsTo x v env.(var_env) ->
+    eval env (Tm_Var x) v.
 
 (* Type consistence for op_env and opty_env *)
 (* If an operator is typed in opty_env, then its semantics in op_env *)
 (* must be consistent with the types in opty_env.                    *)
-Axiom type_Consistence_across_op_envs :
-  forall (k : StrMap.key) (lty : list ty) (rty : ty) (f : list val -> val -> Prop) (lval: list val),
-  StrMap.MapsTo k (Ty_Op lty rty) opty_env ->
-  StrMap.MapsTo k f op_env ->
+Definition type_consistence_across_op_envs (env : env) : Prop :=
+  forall (k : string) (lty : list ty) (rty : ty) (f : list val -> val -> Prop) (lval: list val),
+  StrMap.MapsTo k (Ty_Op lty rty) env.(opty_env) ->
+  StrMap.MapsTo k f env.(op_env) ->
   val_has_type (Val_Prod lval) (Ty_Prod lty) ->
   (forall (rval : val), f lval rval -> val_has_type rval rty).
 
 (* Type consistence for var_env and varty_env *)
 (* If a variable is typed in varty_env, then its value in var_env *)
 (* must be consistent with the type in varty_env.                 *)
-Axiom type_Consistence_across_var_envs :
-  forall (x : StrMap.key) (ty : ty) (v : val),
-  StrMap.MapsTo x ty varty_env ->
-  StrMap.MapsTo x v var_env ->
+Definition type_consistence_across_var_envs (env : env) : Prop :=
+  forall (x : string) (ty : ty) (v : val),
+  StrMap.MapsTo x ty env.(varty_env) ->
+  StrMap.MapsTo x v env.(var_env) ->
   val_has_type v ty.
 
 (* Evaluability of operators *)
 (* An operator in op_env must be evaluable, in that when given a list of values *)
 (* that are typed according to the operator's type in opty_env,                 *)
 (* there must be a value that the operator can evaluate to.                     *)
-Axiom evaluability_of_operators :
-  forall (k : StrMap.key) (lty : list ty) (rty : ty) (f : list val -> val -> Prop) (lval: list val),
-  StrMap.MapsTo k (Ty_Op lty rty) opty_env ->
-  StrMap.MapsTo k f op_env ->
+Definition evaluability_of_operators (env : env) : Prop :=
+  forall (k : string) (lty : list ty) (rty : ty) (f : list val -> val -> Prop) (lval: list val),
+  StrMap.MapsTo k (Ty_Op lty rty) env.(opty_env) ->
+  StrMap.MapsTo k f env.(op_env) ->
   val_has_type (Val_Prod lval) (Ty_Prod lty) ->
   exists (rval : val), f lval rval.
 
 (* Identifier agreement for op_env and opty_env *)
 (* The set of identifiers in opty_env and op_env must be the same. *)
-Axiom id_agreement_across_op_envs :
-  forall (k : StrMap.key), StrMap.In k opty_env = StrMap.In k op_env.
+Definition id_agreement_across_op_envs (env : env) : Prop :=
+  forall (k : string), StrMap.In k env.(opty_env) = StrMap.In k env.(op_env).
 
 (* Identifier agreement for var_env and varty_env *)
 (* The set of identifiers in varty_env and var_env must be the same. *)
-Axiom id_agreement_across_var_envs :
-  forall (x : StrMap.key), StrMap.In x varty_env = StrMap.In x var_env.
+Definition id_agreement_across_var_envs (env : env) : Prop :=
+  forall (x : string), StrMap.In x env.(varty_env) = StrMap.In x env.(var_env).
 
 (* Theorem: type preservation - if a term is typed and evaluates to a value, *)
 (* then that value must have the same type as the term.                      *)
-Theorem type_preservation : forall (t : tm) (ty : ty) (v : val),
-  tm_has_type t ty -> eval t v -> val_has_type v ty.
+Theorem type_preservation : forall (env : env) (t : tm) (ty : ty) (v : val),
+  type_consistence_across_op_envs env ->
+  type_consistence_across_var_envs env ->
+  tm_has_type env t ty -> 
+  eval env t v -> 
+  val_has_type v ty.
 Proof.
-  intros t ty v H1 H2.
+  intros env t ty v Henv0 Henv1 H1 H2.
   generalize dependent v.
   induction H1; intros v H2; inversion H2.
   - apply ValHasTy_Int.
@@ -254,21 +259,20 @@ Proof.
     + apply IHtm_has_type2 with (v:=tv); assumption.
   - apply ValHasTy_None.
   - apply ValHasTy_Some; subst; auto.
-  - (* In this case, we resort to the type consistence axiom for operators *)
+  - (* In this case, we resort to the type consistence axiom for operators, i.e. Henv0 *)
     subst. rename op into opname. rename ty0 into rty.
-    assert (H8 : val_has_type (Val_Prod lval) (Ty_Prod lty)) by auto.
-    assert (H9 : forall (rval : val), f lval rval -> val_has_type rval rty) by
-      (apply type_Consistence_across_op_envs 
-        with (lval:=lval) (k:=opname) (lty:=lty); auto).
-    apply H9.
+    assert (H9 : val_has_type (Val_Prod lval) (Ty_Prod lty)) by auto.
+    assert (H10 : forall (rval : val), f lval rval -> val_has_type rval rty) by
+      (apply Henv0 with (k:=opname) (lty:=lty); auto).
+    apply H10.
     assumption.
-  - (* In this case, we resort to the type consistence axiom for variables *)
+  - (* In this case, we resort to the type consistence axiom for variables, i.e. Henv1 *)
     subst.
-    apply type_Consistence_across_var_envs with (ty:=ty0) (x:=x); assumption.
+    apply Henv1 with (ty:=ty0) (x:=x); assumption.
 Qed.
 
 (* Adapted from http://web4.ensiie.fr/~robillard/Graph_Library/MapFacts.html *)
-Local Lemma Mapsto_In : forall a v (m : StrMap.t a), StrMap.In v m <-> exists x, StrMap.MapsTo v x m.
+Local Lemma mapsto_in : forall a v (m : StrMap.t a), StrMap.In v m <-> exists x, StrMap.MapsTo v x m.
 Proof.
   intros. rewrite StrMapFacts.in_find_iff.
   case_eq (StrMap.find v m); intros.
@@ -281,10 +285,15 @@ Proof.
 Qed.
 
 (* Theorem: normalization - every typed term evaluates to a value *)
-Theorem normalization : forall (t : tm) (ty : ty),
-  tm_has_type t ty -> exists (v : val), eval t v.
+Theorem normalization : forall (env : env) (t : tm) (ty : ty),
+  type_consistence_across_op_envs env ->
+  type_consistence_across_var_envs env ->
+  id_agreement_across_op_envs env ->
+  id_agreement_across_var_envs env ->
+  evaluability_of_operators env ->
+  tm_has_type env t ty -> exists (v : val), eval env t v.
 Proof.
-  intros tm ty H1.
+  intros env tm ty Henv0 Henv1 Henv2 Henv3 Henv4 H1.
   induction H1;
     try rename IHtm_has_type into IH;
     try rename IHtm_has_type1 into IH1;
@@ -314,33 +323,54 @@ Proof.
     }
     destruct H2 as [lval lval_eval].
     subst.
-    assert (H3 : exists f : list val -> val -> Prop, StrMap.MapsTo op f op_env). {
-      assert (H3_1 : exists (x : opty), StrMap.MapsTo op x opty_env) by eauto.
-      apply Mapsto_In in H3_1.
+    assert (H3 : exists f : list val -> val -> Prop, StrMap.MapsTo op f env.(op_env)). {
+      assert (H3_1 : exists (x : opty), StrMap.MapsTo op x env.(opty_env)) by eauto.
+      apply mapsto_in in H3_1.
       (* Here we resort to the identifier agreement axiom for operators *)
-      rewrite id_agreement_across_op_envs in H3_1.
+      rewrite Henv2 in H3_1.
       trivial.
     }
     destruct H3 as [f H2].
     assert (lval_type : val_has_type (Val_Prod lval) (Ty_Prod lty)). {
       (* Here we use the type preservation theorem we have proven *)
-      apply type_preservation with (t:=Tm_Prod ltm) (v:=Val_Prod lval); auto.
+      apply type_preservation with (t:=Tm_Prod ltm) (v:=Val_Prod lval) (env:=env); auto.
     }
     assert (H4 : exists (rval : val), f lval rval). {
       (* Here we resort to the evaluability axiom for operators *)
-      apply evaluability_of_operators with (lval:=lval) (k:=op) (lty:=lty) (rty:=ty0); auto.
+      apply Henv4 with (lval:=lval) (k:=op) (lty:=lty) (rty:=ty0); auto.
     }
     destruct H4 as [rval H4].
     exists rval.
     apply Eval_Op with (f:=f) (lval:=lval); auto.
-  - assert (H2 : exists (v : val), StrMap.MapsTo x v var_env). {
-      assert (H2_1 : exists (ty : ty), StrMap.MapsTo x ty varty_env) by eauto.
-      apply Mapsto_In in H2_1.
+  - assert (H2 : exists (v : val), StrMap.MapsTo x v env.(var_env)). {
+      assert (H2_1 : exists (ty : ty), StrMap.MapsTo x ty env.(varty_env)) by eauto.
+      apply mapsto_in in H2_1.
       (* Here we resort to the identifier agreement axiom for variables *)
-      rewrite id_agreement_across_var_envs in H2_1.
+      rewrite Henv3 in H2_1.
       trivial.
     }
     destruct H2 as [v H2].
     exists v.
     apply Eval_Var; auto.
 Qed.
+
+(* Check whether a term contains a variable *)
+Inductive tm_contains_var : tm -> string -> Prop :=
+  (* | TmContainsVar_Prod : forall (ltm : list tm) (x : string), 
+    (exists (t : tm), List.In t ltm /\ tm_contains_var t x) -> 
+    tm_contains_var (Tm_Prod ltm) x *)
+  | TmContainsVar_Prod : forall (htm : tm) (ltm : list tm) (x : string),
+    (tm_contains_var htm x \/ tm_contains_var (Tm_Prod ltm) x) ->
+    tm_contains_var (Tm_Prod (htm :: ltm)) x
+  | TmContainsVar_Cons : forall (t1 t2 : tm) (x : string),
+    (tm_contains_var t1 x \/ tm_contains_var t2 x) -> 
+    tm_contains_var (Tm_Cons t1 t2) x
+  | TmContainsVar_Some : forall (t : tm) (x : string),
+    tm_contains_var t x -> 
+    tm_contains_var (Tm_Some t) x
+  | TmContainsVar_Op : forall (ltm : list tm) (opname x : string),
+    (exists (t : tm), List.In t ltm /\ tm_contains_var t x) -> 
+    tm_contains_var (Tm_Op opname ltm) x
+  | TmContainsVar_Var : forall (t : tm) (x : string),
+    t = Tm_Var x -> 
+    tm_contains_var t x.
