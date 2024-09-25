@@ -1,8 +1,6 @@
 (* Interfaces.v *)
 (* Interfaces *)
-From EasyUCFormalization Require Import Utils.
-From EasyUCFormalization Require Import StrVList.
-From EasyUCFormalization Require Import Msgs.
+From EasyUCFormalization Require Import Utils StrVList Msgs.
 
 (* Interface kind: direct or adversarial *)
 Inductive interface_kind : Type :=
@@ -15,7 +13,7 @@ Inductive basic_inter : Type :=
 
 (* Composite interfaces *)
 Inductive comp_inter : Type :=
-  | CompInter_Cons : StrMap.t StrMap.key -> comp_inter.  (* Note that StrMap.key = string *)
+  | CompInter_Cons : StrMap.t string -> comp_inter.  (* Note that StrMap.key = string *)
 
 (* Interfaces *)
 Inductive interface : Type :=
@@ -92,7 +90,7 @@ Definition interface_env_is_wf (env : StrMap.t interface) (kind : interface_kind
        and wrt. kind and env if it is composite.
      - env' = env + [x |-> i] *)
 Inductive interface_typecheck
-    (env : StrMap.t interface) (kind : interface_kind) (x : StrMap.key) : 
+    (env : StrMap.t interface) (kind : interface_kind) (x : string) : 
     interface -> StrMap.t interface -> Prop :=
   | BasicInter_TC : forall (bi : basic_inter) (env' : StrMap.t interface),
     ~ StrMap.In x env ->
@@ -125,7 +123,7 @@ Inductive interface_list_typecheck
     svlist interface -> StrMap.t interface -> Prop :=
   | EmptyInterList_TC :
     interface_list_typecheck env kind [] env
-  | ConsInterList_TC : forall (x : StrMap.key) (i : interface) (l : svlist interface) 
+  | ConsInterList_TC : forall (x : string) (i : interface) (l : svlist interface) 
       (env' env'' : StrMap.t interface),
     interface_typecheck env kind x i env' ->
     interface_list_typecheck env' kind l env'' ->
@@ -135,7 +133,7 @@ Inductive interface_list_typecheck
     is not already in the environment, then any identifier already in the environment
     continues to map to the same interface *)
 Local Lemma environment_mapping_invariance_with_new_identifier :
-  forall (i new_i : interface) (i_name new_i_name : StrMap.key) 
+  forall (i new_i : interface) (i_name new_i_name : string) 
     (env : StrMap.t interface),
   ~ StrMap.In new_i_name env ->
   StrMap.MapsTo i_name i env ->
@@ -156,7 +154,7 @@ Qed.
 (* Theorem : if env |-(kind) (x, i) : env' and interface_env_is_wf env kind, 
              then interface_env_is_wf env' kind *)
 Theorem environment_wf_preservation : 
-  forall (env : StrMap.t interface) (kind : interface_kind) (x : StrMap.key) 
+  forall (env : StrMap.t interface) (kind : interface_kind) (x : string) 
     (i : interface) (env' : StrMap.t interface),
   interface_typecheck env kind x i env' ->
   interface_env_is_wf env kind ->
@@ -224,6 +222,8 @@ Proof.
         apply environment_mapping_invariance_with_new_identifier; assumption.
 Qed.
 
+(* Theorem: Similarly, the same well-formedness preservation holds in the case of 
+            list type-checking *)
 Theorem environment_list_wf_preservation : 
   forall (env env'': StrMap.t interface) (kind : interface_kind) (l : svlist interface),
   interface_list_typecheck env kind l env'' ->
