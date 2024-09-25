@@ -1,7 +1,6 @@
 (* Msgs.v *)
 (* Messages *)
-From EasyUCFormalization Require Import NonProbTerms.
-From EasyUCFormalization Require Import StrVList.
+From EasyUCFormalization Require Import NonProbTerms StrVList.
 
 (* Message direction *)
 Inductive msg_dir : Type :=
@@ -10,11 +9,9 @@ Inductive msg_dir : Type :=
 
 (* Message type *)
 Record msg : Type :=
-  Mk_Msg {
-    dir : msg_dir;
+  { dir : msg_dir;
     params : svlist ty;
-    port : option string
-  }.
+    port : option string }.
 
 (* Checks ***************************************************************************)
 (* 1. A message cannot have more than max_msg_params parameters.                    *)
